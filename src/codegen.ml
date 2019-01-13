@@ -1308,7 +1308,7 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
         (match (lookup namespace (Bind(name, ty))) with
           | RawAddr(addr) -> (Raw(L.build_load addr name the_state.b),the_state)
           | BoxAddr(addr, needs_update) ->
-            let the_state = check_defined addr ("RuntimeError: name '" ^ name ^ "' is not defined") the_state in (* maybe could be optimized sometimes *)
+            let the_state = check_defined addr ("RuntimeError: name '" ^ name ^ "' (of type " ^ string_of_typ ty ^ ") is not defined") the_state in (* maybe could be optimized sometimes *)
             let the_state = rebox_if_needed (BoxAddr(addr, needs_update)) name the_state in
             (Box(L.build_load addr name the_state.b),the_state)
         )
@@ -1707,7 +1707,7 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
         let the_state = change_state the_state (S_b(L.builder_at_end context merge_bb)) in 
         the_state
  
-      | SWhile (predicate, body) ->
+      | SWhile (predicate, body, entry, exit) ->
         let pred_bb = L.append_block context "while" the_function in
         ignore(L.build_br pred_bb the_state.b);
         let body_bb = L.append_block context "while_body" the_function in
@@ -1729,7 +1729,7 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
         let merge_state = change_state the_state (S_b(L.builder_at_end context merge_bb)) in 
         merge_state
 
-      | SFor(var, lst, body) -> (* initialize list index variable and list length *)
+      | SFor(var, lst, body, exit_false, exit_true) -> (* initialize list index variable and list length *)
          let (Box(objptr), the_state) = expr the_state lst in  (* TODO update box if needed *)
          let listptr = build_getlist_cobj objptr the_state.b in
 
@@ -1737,16 +1737,33 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
          ignore(L.build_store (L.const_int int_t 0) nptr the_state.b);
 
          let ln = build_getlen_clist listptr the_state.b in
+         (* let boolptr = L.build_alloca bool_t "entry_bool" the_state.b in  *)
+         (* ignore(L.build_store (L.const_int bool_t 0) boolptr the_state.b); *)
+
+         (* check_entry block *)
+         let check_entry_bb = L.append_block context "check_entry" the_function in
+         ignore(L.build_br check_entry_bb the_state.b);
+         let check_entry_builder = L.builder_at_end context check_entry_bb in
+         let n = L.build_load nptr "n" check_entry_builder in
+         let not_empty = (L.build_icmp L.Icmp.Sge) n ln "iter_complete" check_entry_builder in (* true if n exceeds list length *)
+
+        (* exit false block *)
+         let exit_false_bb = L.append_block context "exit_false" the_function in
+         let exit_false_builder = L.builder_at_end context exit_false_bb in
+         let the_state = change_state the_state (S_b(exit_false_builder)) in
+         let the_state = stmt the_state exit_false in 
+
+        (* exit true block *)
+         let exit_true_bb = L.append_block context "exit_true" the_function in
+         let exit_true_builder = L.builder_at_end context exit_true_bb in
+         let the_state = change_state the_state (S_b(exit_true_builder)) in
+         let the_state = stmt the_state exit_true in 
 
          (* iter block *)
          let iter_bb = L.append_block context "iter" the_function in
-           ignore(L.build_br iter_bb the_state.b);
-
          let iter_builder = L.builder_at_end context iter_bb in
-
          let n = L.build_load nptr "n" iter_builder in
          let nnext = L.build_add n (L.const_int int_t 1) "nnext" iter_builder in
-
          let iter_complete = (L.build_icmp L.Icmp.Sge) n ln "iter_complete" iter_builder in (* true if n exceeds list length *)
 
          (* body of for loop *)
@@ -1756,12 +1773,11 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
          let fn_p = build_getctypefn_cobj ctype_idx_idx objptr body_builder in
          let elmptr = L.build_call fn_p [|objptr; idxptr|] "idx_cob" body_builder in
 
-        ignore(L.build_store nnext nptr body_builder);
+         ignore(L.build_store nnext nptr body_builder);
 
          let the_state = change_state the_state (S_b(body_builder)) in
 
          let Bind(name, explicit_t) = var in
-
          let the_state = (match (lookup namespace var) with (*assignment so ok to throw away the needs_update bool*)
               | BoxAddr(var_addr, _) -> ignore(L.build_store elmptr var_addr the_state.b); the_state
               | RawAddr(var_addr) -> 
@@ -1772,12 +1788,24 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
           ) in
 
          ignore(add_terminal (stmt the_state body) (L.build_br iter_bb));
+
+         let exit_bb = L.append_block context "exit" the_function in
+         let exit_builder = L.builder_at_end context exit_bb in
+         let the_state = change_state the_state (S_b(exit_builder)) in
+         let the_state = stmt the_state exit_true in 
+
          let merge_bb = L.append_block context "merge" the_function in
-           ignore(L.build_cond_br iter_complete merge_bb body_bb iter_builder);
+           ignore(L.build_br merge_bb the_state.b);
+           ignore(L.build_br merge_bb exit_true_builder);
+           ignore(L.build_br merge_bb exit_false_builder);
+
+           ignore(L.build_cond_br iter_complete exit_true_bb body_bb iter_builder);
+           ignore(L.build_cond_br not_empty exit_false_bb iter_bb check_entry_builder);
+
          let the_state = change_state the_state (S_b(L.builder_at_end context merge_bb)) in
            the_state
 
-    | SRange(var, upper, body) -> (* initialize list index variable and list length *)
+    | SRange(var, upper, body, exit_false, exit_true) -> (* initialize list index variable and list length *)
          let Bind(name, explicit_t) = var in 
          let (upperdata, the_state) = (match (expr the_state upper) with  (* n variable *)
           | (Box(objptr), the_state) -> let the_state = check_explicit_type Int objptr ("RuntimeError: invalid type in range loop" ^ name) the_state in
@@ -1787,10 +1815,27 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
          let (idxptr, nptr) = build_new_cobj int_t the_state.b in
          ignore(L.build_store (L.const_int int_t 0) nptr the_state.b);
 
+        (* check_entry block *)
+         let check_entry_bb = L.append_block context "check_entry" the_function in
+         ignore(L.build_br check_entry_bb the_state.b);
+         let check_entry_builder = L.builder_at_end context check_entry_bb in
+         let n = L.build_load nptr "n" check_entry_builder in
+         let not_empty = (L.build_icmp L.Icmp.Sge) n upperdata "iter_complete" check_entry_builder in (* true if n exceeds list length *)
+
+        (* exit false block *)
+         let exit_false_bb = L.append_block context "exit_false" the_function in
+         let exit_false_builder = L.builder_at_end context exit_false_bb in
+         let the_state = change_state the_state (S_b(exit_false_builder)) in
+         let the_state = stmt the_state exit_false in 
+
+        (* exit true block *)
+         let exit_true_bb = L.append_block context "exit_true" the_function in
+         let exit_true_builder = L.builder_at_end context exit_true_bb in
+         let the_state = change_state the_state (S_b(exit_true_builder)) in
+         let the_state = stmt the_state exit_true in 
+
          (* iter block *)
          let iter_bb = L.append_block context "iter" the_function in
-           ignore(L.build_br iter_bb the_state.b);
-
          let iter_builder = L.builder_at_end context iter_bb in
 
          let n = L.build_load nptr "n" iter_builder in
@@ -1816,7 +1861,12 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
          ignore(add_terminal (stmt the_state body) (L.build_br iter_bb));
 
          let merge_bb = L.append_block context "merge" the_function in
-           ignore(L.build_cond_br iter_complete merge_bb body_bb iter_builder);
+           ignore(L.build_br merge_bb exit_true_builder);
+           ignore(L.build_br merge_bb exit_false_builder);
+
+           ignore(L.build_cond_br iter_complete exit_true_bb body_bb iter_builder);
+           ignore(L.build_cond_br not_empty exit_false_bb iter_bb check_entry_builder);
+           
          let the_state = change_state the_state (S_b(L.builder_at_end context merge_bb)) in
            the_state
 

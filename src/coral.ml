@@ -209,9 +209,9 @@ This also handles printing the types of expressions. *)
 
 let rec strip_return_stmt = function 
   | SIf(a, b, c) -> SIf(strip_return_expr a, strip_return_stmt b, strip_return_stmt c)
-  | SWhile(a, b) -> SWhile(strip_return_expr a, strip_return_stmt b)
-  | SFor(a, b, c) -> SFor(a, strip_return_expr b, strip_return_stmt c)
-  | SRange(a, b, c) -> SRange(a, strip_return_expr b, strip_return_stmt c)
+  | SWhile(a, b, c, d) -> SWhile(strip_return_expr a, strip_return_stmt b, strip_return_stmt c, strip_return_stmt d)
+  | SFor(a, b, c, d, e) -> SFor(a, strip_return_expr b, strip_return_stmt c, strip_return_stmt d, strip_return_stmt e)
+  | SRange(a, b, c, d, e) -> SRange(a, strip_return_expr b, strip_return_stmt c, strip_return_stmt d, strip_return_stmt e)
   | SBlock(x) -> SBlock(strip_return [] x)
   | SFunc({ styp; sfname; sformals; slocals; sbody }) -> SFunc({ styp; sfname; sformals; slocals; sbody = strip_return_stmt sbody; })
   | SExpr(e) -> SExpr(strip_return_expr e)

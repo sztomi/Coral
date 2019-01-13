@@ -5,7 +5,7 @@ open Sast
 exception Runtime of string
 exception KeyboardInterrupt
 
-let debug str = (* Printf.eprintf "%s\n" str; *) ()
+let debug str = print_endline str; ()
 
 (* float_of_bool: converts floats to bools, so we can hack in support for if statements. 1.0 is true, etc. *)
 let float_of_bool b = if b then 1.0 else 0.0 
@@ -218,16 +218,16 @@ extracts objects with transformed type for use in codegen.
 rec1 and rec2 are the STransforms that need to be added to the if and else branch, respectively. 
 binds is a list of dynamic binds that need to be added to the list of locals or globals*)
 
-let transform m1 m2 = rec1 := []; rec2 := []; binds := []; 
+let transform m1 m2 str = rec1 := []; rec2 := []; binds := []; 
   let map = StringMap.merge (fun key v1 v2 -> match v1, v2 with (* merge two lists while keeping type inference intact *)
     | Some (a, b, c), Some (d, e, f) -> 
         let t = compare_types b e in
-        let () = if b <> t then (rec1 := ((STransform(key, b, Dyn) :: !rec1)); binds := ((Bind(key, Dyn) :: !binds))) in
-        let () = if e <> t then (rec2 := ((STransform(key, e, Dyn)) :: !rec2); binds := ((Bind(key, Dyn) :: !binds))) in
+        let () = if b <> t then (debug ("main transform: " ^ str ^ " " ^ key ^ ": " ^ (string_of_typ b) ^ " -> Dyn"); (rec1 := ((STransform(key, b, Dyn) :: !rec1)); binds := ((Bind(key, Dyn) :: !binds)))) in
+        let () = if e <> t then (debug ("alt transform: " ^ str ^ " " ^ key ^ ": " ^ (string_of_typ e) ^ " -> Dyn"); (rec2 := ((STransform(key, e, Dyn)) :: !rec2); binds := ((Bind(key, Dyn) :: !binds)))) in
         Some (compare_types a d, compare_types b e, compare_data c f)
 
-    | Some (a, b, c), None -> let () = if b <> Dyn then (rec1 := (STransform(key, b, Dyn) :: !rec1); binds := (Bind(key, Dyn) :: !binds)) in Some(Dyn, Dyn, None)
-    | None, Some(a, b, c) -> let () = if b <> Dyn then (rec2 := (STransform(key, b, Dyn) :: !rec2); binds := (Bind(key, Dyn) :: !binds)) in Some(Dyn, Dyn, None)
+    | Some (a, b, c), None -> let () = debug ("main transform: " ^ str ^ " " ^ key ^ ": " ^ (string_of_typ b) ^ " -> Dyn"); if b <> Dyn then (rec1 := (STransform(key, b, Dyn) :: !rec1); binds := (Bind(key, Dyn) :: !binds)) in Some(Dyn, Dyn, None)
+    | None, Some(a, b, c) -> let () = debug ("alt transform: " ^ str ^ " " ^ key ^ ": " ^ (string_of_typ b) ^ " -> Dyn"); if b <> Dyn then (rec2 := (STransform(key, b, Dyn) :: !rec2); binds := (Bind(key, Dyn) :: !binds)) in Some(Dyn, Dyn, None)
     | None, None -> None
   ) m1 m2 in 
   (map, SBlock(!rec1), SBlock(!rec2), !binds)
