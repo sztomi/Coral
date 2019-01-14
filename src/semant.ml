@@ -450,14 +450,16 @@ and func_stmt globals locals the_state = function
       let bind_for_locals = Bind(name, inferred_t) in
       let bind_for_sast = Bind(name, inferred_t) in
       let (m', x', d, out) = func_stmt globals m {the_state with cond = true; forloop = true; } c in 
-      if equals locals m' then let () = debug "equal first time" in (m', SFor(bind_for_sast, e', x', SNop, SNop), d, bind_for_locals :: out)
-      else let (merged_out, _, exit, binds) = transform locals m' "merged_out for" in
-      let (merged, entry, _, _) = transform m m' "for second time" in 
-      let (m', x', d, out) = func_stmt globals merged {the_state with cond = true; forloop = true; } c in 
-      if equals merged m' then let () = debug "equal second time" in (merged_out, SFor(bind_for_sast, e', x', entry, exit), match_data d None, bind_for_locals :: out @ binds) 
-      else let (merged, _, _, _) = transform merged_out m' "third time for" in 
+      if equals locals m' then let () = debug "equal first time" in (m', SFor(bind_for_sast, e', x', SNop, SNop, SNop), d, bind_for_locals :: out)
+      else let (merged, _, _, _) = transform m m' "for second time" in 
+      let (m'', x', d, out) = func_stmt globals merged {the_state with cond = true; forloop = true; } c in 
+      let (_, _, entry_true, binds1) = transform locals merged "for third time" in 
+      let (merged_out, exit_false, exit_true, binds2) = transform locals m'' "for fourth time" in 
+
+      let () = debug "equal second time" in (merged_out, SFor(bind_for_sast, e', x', entry_true, exit_true, exit_false), match_data d None, bind_for_locals :: out @ binds1 @ binds2) 
+      (* else let (merged, _, _, _) = transform merged_out m'' "third time for" in 
       let () = debug "equal third time" in
-      (merged, SFor(bind_for_sast, e', entry, x', exit), match_data d None, bind_for_locals :: out @ binds) 
+      (merged, SFor(bind_for_sast, e', entry, x', exit), match_data d None, bind_for_locals :: out @ binds1 @ binds2)  *)
 
  | Range(a, b, c) -> 
       let (typ, e', data) = func_expr globals locals the_state b in 
@@ -585,14 +587,19 @@ and stmt map the_state = function (* evaluates statements, can pass it a func *)
     let bind_for_locals = Bind(name, inferred_t) in
     let bind_for_sast = Bind(name, inferred_t) in
     let (m', x', out) = stmt m {the_state with cond = true; forloop = true; } c in 
-    if equals map m' then let () = debug "equal first time" in (m', SFor(bind_for_sast, e', x', SNop, SNop), bind_for_locals :: out) 
-    else let (merged_out, entry, exit, binds) = transform map m' "merged_out" in (* this has the for loop variable as dynamic *)
-    let (merged, _, _, _) = transform m m' "for second time" in (* this keeps the for loop variable of known type if possible *)
-    let (m', x', out) = stmt merged {the_state with cond = true; forloop = true; } c in 
-    if equals merged m' then let () = debug "equal second time" in (merged_out, SFor(bind_for_sast, e', x', entry, exit), bind_for_locals :: out @ binds) 
-    else let (merged, _, _, _) = transform merged_out m' "for third time" in
+    if equals map m' then let () = debug "equal first time" in (m', SFor(bind_for_sast, e', x', SNop, SNop, SNop), bind_for_locals :: out) 
+    else let (merged, _, _, _) = transform m m' "for second time" in (* this keeps the for loop variable of known type if possible *)
+    let (m'', x', out) = stmt merged {the_state with cond = true; forloop = true; } c in 
+     let (_, _, entry_true, binds1) = transform m merged "for third time" in 
+    
+    let (merged_out, exit_false, exit_true, binds2) = transform map m'' "for fourth time" in 
+    
+    if equals merged m'' then let () = debug "equal second time" in (merged_out, SFor(bind_for_sast, e', x', entry_true, exit_true, exit_false), bind_for_locals :: out @ binds1 @ binds2) 
+    else let (merged, _, _, _) = transform merged m'' "for fifth time" in
+    let (_, entry_true, _, binds3) = transform m merged "for sixth time" in 
+    let (merged_out, exit_false, exit_true, binds4) = transform map merged "for seventh time" in 
     let () = debug "equal third time" in
-    (merged, SFor(bind_for_sast, e', x', entry, exit), bind_for_locals :: out @ binds)
+    (merged_out, SFor(bind_for_sast, e', x', entry_true, exit_true, exit_false), bind_for_locals :: out @ binds1 @ binds2 @ binds3 @ binds4)
 
   | Range(a, b, c) -> 
     let (typ, e', data) = expr map b in 

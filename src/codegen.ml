@@ -1729,7 +1729,7 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
         let merge_state = change_state the_state (S_b(L.builder_at_end context merge_bb)) in 
         merge_state
 
-      | SFor(var, lst, body, exit_false, exit_true) -> (* initialize list index variable and list length *)
+      | SFor(var, lst, body, entry_true, exit_true, exit_false) -> (* initialize list index variable and list length *)
          let (Box(objptr), the_state) = expr the_state lst in  (* TODO update box if needed *)
          let listptr = build_getlist_cobj objptr the_state.b in
 
@@ -1746,6 +1746,12 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
          let check_entry_builder = L.builder_at_end context check_entry_bb in
          let n = L.build_load nptr "n" check_entry_builder in
          let not_empty = (L.build_icmp L.Icmp.Sge) n ln "iter_complete" check_entry_builder in (* true if n exceeds list length *)
+        
+        (* entry true block *)
+         let entry_true_bb = L.append_block context "exit_false" the_function in
+         let entry_true_builder = L.builder_at_end context entry_true_bb in
+         let the_state = change_state the_state (S_b(entry_true_builder)) in
+         let the_state = stmt the_state entry_true in 
 
         (* exit false block *)
          let exit_false_bb = L.append_block context "exit_false" the_function in
@@ -1798,9 +1804,10 @@ let translate prgm except =   (* note this whole thing only takes two things: gl
            ignore(L.build_br merge_bb the_state.b);
            ignore(L.build_br merge_bb exit_true_builder);
            ignore(L.build_br merge_bb exit_false_builder);
+           ignore(L.build_br iter_bb entry_true_builder);
 
            ignore(L.build_cond_br iter_complete exit_true_bb body_bb iter_builder);
-           ignore(L.build_cond_br not_empty exit_false_bb iter_bb check_entry_builder);
+           ignore(L.build_cond_br not_empty exit_false_bb entry_true_bb check_entry_builder);
 
          let the_state = change_state the_state (S_b(L.builder_at_end context merge_bb)) in
            the_state

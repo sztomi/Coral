@@ -54,7 +54,7 @@ and sstmt = (* this can be refactored using Blocks, but I haven't quite figured 
   | SBlock of sstmt list (* block found in function body or for/else/if/while loop *)
   | SExpr of sexpr (* see above *)
   | SIf of sexpr * sstmt * sstmt (* condition, if, else *)
-  | SFor of bind * sexpr * sstmt * sstmt * sstmt (* (variable, list, body (block), entry (block), exit (block)) *)
+  | SFor of bind * sexpr * sstmt * sstmt * sstmt * sstmt (* (variable, list, body (block), entry (block), exit (block)) *)
   | SWhile of sexpr * sstmt * sstmt * sstmt (* (condition, body (block)) *)
   | SRange of bind * sexpr * sstmt * sstmt * sstmt
   | SReturn of sexpr (* return statement *)
@@ -97,7 +97,7 @@ and string_of_sstmt depth = function
   | SBlock(sl) -> concat_end (String.make (2 * depth) ' ') (append_list "\n" (List.map (string_of_sstmt (depth + 1)) sl))
   | SExpr(e) -> string_of_sexpr e
   | SIf(e, s1, s2) ->  "if " ^ string_of_sexpr e ^ ":\n" ^ string_of_sstmt depth s1 ^ (String.make (2 * (depth - 1)) ' ') ^ "else:\n" ^ string_of_sstmt depth s2
-  | SFor(b, e, s, entry, exit) -> "for " ^ string_of_sbind b ^ " in " ^ string_of_sexpr e ^ ":\n" ^ string_of_sstmt depth s ^ "entry: " ^ string_of_sstmt depth entry ^ " exit: " ^ string_of_sstmt depth exit
+  | SFor(b, e, s, entry_true, exit_true, exit_false) -> "for " ^ string_of_sbind b ^ " in " ^ string_of_sexpr e ^ ":\n" ^ string_of_sstmt depth s ^ "entry true: " ^ string_of_sstmt depth entry_true ^ " exit true: " ^ string_of_sstmt depth exit_true ^ " exit false: " ^ string_of_sstmt depth exit_false
   | SRange(b, e, s, entry, exit) -> "range " ^ string_of_sbind b ^ " in range (" ^ string_of_sexpr e ^ ") :\n" ^ string_of_sstmt depth s ^ "entry: " ^ string_of_sstmt depth entry ^ " exit: " ^ string_of_sstmt depth exit
   | SWhile(e, s, entry, exit) -> "while " ^ string_of_sexpr e ^ ":\n" ^ string_of_sstmt depth s ^ "entry: " ^ string_of_sstmt depth entry ^ " exit: " ^ string_of_sstmt depth exit
   | SReturn(e) -> "return " ^ string_of_sexpr e
