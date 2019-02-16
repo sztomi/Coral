@@ -2,8 +2,9 @@ FROM ubuntu:18.04
 VOLUME ["/data", "/opam"]
 
 RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get update && \
-    apt-get install -y m4 make ocaml opam llvm-6.0-dev m4 cmake pkg-config
+    apt-get update && apt-get install -y --no-install-recommends m4 make \
+    ocaml opam llvm-6.0-dev m4 cmake pkg-config aspcud ca-certificates python && \
+    rm -rf /var/lib/apt/lists
 
 RUN useradd -ms /bin/sh coral
 
@@ -13,7 +14,6 @@ ENV OPAMYES 1
 WORKDIR /home/coral
 
 RUN opam init
-RUN eval $(opam config env)
 RUN opam install llvm
 
 WORKDIR /data
