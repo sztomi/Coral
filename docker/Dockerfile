@@ -1,14 +1,25 @@
 FROM ubuntu:18.04
-VOLUME ["/data", "/home"]
-
-RUN useradd -ms /bin/bash coral
-
+VOLUME ["/data", "/opam"]
 
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update && \
     apt-get install -y m4 make ocaml opam llvm-6.0-dev m4 cmake pkg-config
 
-CMD chown coral /home/coral
+RUN useradd -ms /bin/sh coral
+
 USER coral
+ENV OPAMYES 1
+
+WORKDIR /home/coral
+
 RUN opam init
+RUN eval $(opam config env)
 RUN opam install llvm
+
+WORKDIR /data
+
+ENV CAML_LD_LIBRARY_PATH="/home/coral/.opam/system/lib/stublibs:/usr/lib/ocaml/stublibs"
+ENV MANPATH="/home/coral/.opam/system/man:"
+ENV PERL5LIB="/home/coral/.opam/system/lib/perl5"
+ENV OCAML_TOPLEVEL_PATH="/home/coral/.opam/system/lib/toplevel"
+ENV PATH="/home/coral/.opam/system/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
